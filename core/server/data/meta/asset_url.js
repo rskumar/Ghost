@@ -1,30 +1,35 @@
-var config = require('../../config');
+var config = require('../../config'),
+    utils = require('../../utils');
 
-function getAssetUrl(context, isAdmin, minify) {
+function getAssetUrl(path, isAdmin, minify) {
     var output = '';
 
-    output += config.paths.subdir + '/';
+    output += utils.url.urlJoin(utils.url.getSubdir(), '/');
 
-    if (!context.match(/^favicon\.ico$/) && !context.match(/^shared/) && !context.match(/^asset/)) {
+    if (!path.match(/^favicon\.ico$/) && !path.match(/^shared/) && !path.match(/^asset/)) {
         if (isAdmin) {
-            output += 'ghost/';
-        } else {
-            output += 'assets/';
+            output = utils.url.urlJoin(output, 'ghost/');
         }
+
+        output = utils.url.urlJoin(output, 'assets/');
     }
 
-    // Get rid of any leading slash on the context
-    context = context.replace(/^\//, '');
+    // Get rid of any leading slash on the path
+    path = path.replace(/^\//, '');
 
     // replace ".foo" with ".min.foo" in production
     if (minify) {
-        context = context.replace(/\.([^\.]*)$/, '.min.$1');
+        path = path.replace(/\.([^\.]*)$/, '.min.$1');
     }
 
-    output += context;
+    output += path;
 
-    if (!context.match(/^favicon\.ico$/)) {
-        output = output + '?v=' + config.assetHash;
+    if (!path.match(/^favicon\.ico$/)) {
+        if (!config.get('assetHash')) {
+            config.set('assetHash', utils.generateAssetHash());
+        }
+
+        output = output + '?v=' + config.get('assetHash');
     }
 
     return output;

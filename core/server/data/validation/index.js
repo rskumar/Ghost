@@ -1,10 +1,12 @@
 var schema    = require('../schema').tables,
     _         = require('lodash'),
     validator = require('validator'),
+    moment    = require('moment-timezone'),
+    assert    = require('assert'),
     Promise   = require('bluebird'),
     errors    = require('../../errors'),
     config    = require('../../config'),
-    readThemes = require('../../utils/read-themes'),
+    readThemes  = require('../../utils/read-themes'),
     i18n        = require('../../i18n'),
 
     validateSchema,
@@ -14,14 +16,30 @@ var schema    = require('../schema').tables,
 
     availableThemes;
 
+function assertString(input) {
+    assert(typeof input === 'string', 'Validator js validates strings only');
+}
+
+// extends has been removed in validator >= 5.0.0, need to monkey-patch it back in
+validator.extend = function (name, fn) {
+    validator[name] = function () {
+        var args = Array.prototype.slice.call(arguments);
+        assertString(args[0]);
+        return fn.apply(validator, args);
+    };
+};
+
 // Provide a few custom validators
-//
 validator.extend('empty', function empty(str) {
     return _.isEmpty(str);
 });
 
 validator.extend('notContains', function notContains(str, badString) {
-    return !_.contains(str, badString);
+    return !_.includes(str, badString);
+});
+
+validator.extend('isTimezone', function isTimezone(str) {
+    return moment.tz.zone(str) ? true : false;
 });
 
 validator.extend('isEmptyOrURL', function isEmptyOrURL(str) {
@@ -39,14 +57,24 @@ validateSchema = function validateSchema(tableName, model) {
         validationErrors = [];
 
     _.each(columns, function each(columnKey) {
-        var message = '';
+        var message = '',
+            strVal = _.toString(model[columnKey]);
 
         // check nullable
         if (model.hasOwnProperty(columnKey) && schema[tableName][columnKey].hasOwnProperty('nullable')
                 && schema[tableName][columnKey].nullable !== true) {
-            if (validator.isNull(model[columnKey]) || validator.empty(model[columnKey])) {
+            if (validator.empty(strVal)) {
                 message = i18n.t('notices.data.validation.index.valueCannotBeBlank', {tableName: tableName, columnKey: columnKey});
-                validationErrors.push(new errors.ValidationError(message, tableName + '.' + columnKey));
+                validationErrors.push(new errors.ValidationError({message: message, context: tableName + '.' + columnKey}));
+            }
+        }
+
+        // validate boolean columns
+        if (model.hasOwnProperty(columnKey) && schema[tableName][columnKey].hasOwnProperty('type')
+                && schema[tableName][columnKey].type === 'bool') {
+            if (!(validator.isBoolean(strVal) || validator.empty(strVal))) {
+                message = i18n.t('notices.data.validation.index.valueMustBeBoolean', {tableName: tableName, columnKey: columnKey});
+                validationErrors.push(new errors.ValidationError({message: message, context: tableName + '.' + columnKey}));
             }
         }
 
@@ -54,23 +82,23 @@ validateSchema = function validateSchema(tableName, model) {
         if (model[columnKey] !== null && model[columnKey] !== undefined) {
             // check length
             if (schema[tableName][columnKey].hasOwnProperty('maxlength')) {
-                if (!validator.isLength(model[columnKey], 0, schema[tableName][columnKey].maxlength)) {
+                if (!validator.isLength(strVal, 0, schema[tableName][columnKey].maxlength)) {
                     message = i18n.t('notices.data.validation.index.valueExceedsMaxLength',
                                      {tableName: tableName, columnKey: columnKey, maxlength: schema[tableName][columnKey].maxlength});
-                    validationErrors.push(new errors.ValidationError(message, tableName + '.' + columnKey));
+                    validationErrors.push(new errors.ValidationError({message: message, context: tableName + '.' + columnKey}));
                 }
             }
 
             // check validations objects
             if (schema[tableName][columnKey].hasOwnProperty('validations')) {
-                validationErrors = validationErrors.concat(validate(model[columnKey], columnKey, schema[tableName][columnKey].validations));
+                validationErrors = validationErrors.concat(validate(strVal, columnKey, schema[tableName][columnKey].validations));
             }
 
             // check type
             if (schema[tableName][columnKey].hasOwnProperty('type')) {
-                if (schema[tableName][columnKey].type === 'integer' && !validator.isInt(model[columnKey])) {
+                if (schema[tableName][columnKey].type === 'integer' && !validator.isInt(strVal)) {
                     message = i18n.t('notices.data.validation.index.valueIsNotInteger', {tableName: tableName, columnKey: columnKey});
-                    validationErrors.push(new errors.ValidationError(message, tableName + '.' + columnKey));
+                    validationErrors.push(new errors.ValidationError({message: message, context: tableName + '.' + columnKey}));
                 }
             }
         }
@@ -105,20 +133,20 @@ validateSettings = function validateSettings(defaultSettings, model) {
 validateActiveTheme = function validateActiveTheme(themeName) {
     // If Ghost is running and its availableThemes collection exists
     // give it priority.
-    if (config.paths.availableThemes && Object.keys(config.paths.availableThemes).length > 0) {
-        availableThemes = Promise.resolve(config.paths.availableThemes);
+    if (config.get('paths').availableThemes && Object.keys(config.get('paths').availableThemes).length > 0) {
+        availableThemes = Promise.resolve(config.get('paths').availableThemes);
     }
 
     if (!availableThemes) {
         // A Promise that will resolve to an object with a property for each installed theme.
         // This is necessary because certain configuration data is only available while Ghost
         // is running and at times the validations are used when it's not (e.g. tests)
-        availableThemes = readThemes(config.paths.themePath);
+        availableThemes = readThemes(config.getContentPath('themes'));
     }
 
     return availableThemes.then(function then(themes) {
         if (!themes.hasOwnProperty(themeName)) {
-            return Promise.reject(new errors.ValidationError(i18n.t('notices.data.validation.index.themeCannotBeActivated', {themeName: themeName}), 'activeTheme'));
+            return Promise.reject(new errors.ValidationError({message: i18n.t('notices.data.validation.index.themeCannotBeActivated', {themeName: themeName}), context: 'activeTheme'}));
         }
     });
 };
@@ -142,6 +170,7 @@ validateActiveTheme = function validateActiveTheme(themeName) {
 // available validators: https://github.com/chriso/validator.js#validators
 validate = function validate(value, key, validations) {
     var validationErrors = [];
+    value = _.toString(value);
 
     _.each(validations, function each(validationOptions, validationName) {
         var goodResult = true;
@@ -157,8 +186,9 @@ validate = function validate(value, key, validations) {
 
         // equivalent of validator.isSomething(option1, option2)
         if (validator[validationName].apply(validator, validationOptions) !== goodResult) {
-            validationErrors.push(new errors.ValidationError(i18n.t('notices.data.validation.index.validationFailed',
-                                                                    {validationName: validationName, key: key})));
+            validationErrors.push(new errors.ValidationError({
+                message: i18n.t('notices.data.validation.index.validationFailed', {validationName: validationName, key: key})
+            }));
         }
 
         validationOptions.shift();

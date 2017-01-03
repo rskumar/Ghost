@@ -1,8 +1,9 @@
 var _ = require('lodash'),
     config = require('../../config'),
-    getConfig;
+    utils = require('../../utils'),
+    channelConfig;
 
-getConfig = function getConfig(name) {
+channelConfig = function channelConfig() {
     var defaults = {
         index: {
             name: 'index',
@@ -11,22 +12,23 @@ getConfig = function getConfig(name) {
         },
         tag: {
             name: 'tag',
-            route: '/' + config.routeKeywords.tag + '/:slug/',
+            route: utils.url.urlJoin('/', config.get('routeKeywords').tag, ':slug/'),
             postOptions: {
-                filter: 'tags:\'%s\''
+                filter: 'tags:\'%s\'+tags.visibility:\'public\''
             },
             data: {
                 tag: {
                     type: 'read',
                     resource: 'tags',
-                    options: {slug: '%s'}
+                    options: {slug: '%s', visibility: 'public'}
                 }
             },
-            slugTemplate: true
+            slugTemplate: true,
+            editRedirect: '/ghost/settings/tags/:slug/'
         },
         author: {
             name: 'author',
-            route: '/' + config.routeKeywords.author + '/:slug/',
+            route: utils.url.urlJoin('/', config.get('routeKeywords').author, ':slug/'),
             postOptions: {
                 filter: 'author:\'%s\''
             },
@@ -37,11 +39,18 @@ getConfig = function getConfig(name) {
                     options: {slug: '%s'}
                 }
             },
-            slugTemplate: true
+            slugTemplate: true,
+            editRedirect: '/ghost/team/:slug/'
         }
     };
 
-    return _.cloneDeep(defaults[name]);
+    return defaults;
 };
 
-module.exports = getConfig;
+module.exports.list = function list() {
+    return channelConfig();
+};
+
+module.exports.get = function get(name) {
+    return _.cloneDeep(channelConfig()[name]);
+};

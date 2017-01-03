@@ -5,6 +5,7 @@ var _               = require('lodash'),
     hbs             = require('express-hbs'),
     Promise         = require('bluebird'),
     errors          = require('../errors'),
+    logging         = require('../logging'),
     api             = require('../api'),
     jsonpath        = require('jsonpath'),
     labs            = require('../utils/labs'),
@@ -25,11 +26,11 @@ pathAliases     = {
 /**
  * ## Is Browse
  * Is this a Browse request or a Read request?
- * @param {Object} context
+ * @param {Object} resource
  * @param {Object} options
  * @returns {boolean}
  */
-function isBrowse(context, options) {
+function isBrowse(resource, options) {
     var browse = true;
 
     if (options.id || options.slug) {
@@ -85,34 +86,34 @@ function parseOptions(data, options) {
 
 /**
  * ## Get
- * @param {Object} context
+ * @param {Object} resource
  * @param {Object} options
  * @returns {Promise}
  */
-get = function get(context, options) {
+get = function get(resource, options) {
     options = options || {};
     options.hash = options.hash || {};
     options.data = options.data || {};
 
     var self = this,
         data = hbs.handlebars.createFrame(options.data),
-        apiOptions = _.omit(options.hash, 'context'),
+        apiOptions = options.hash,
         apiMethod;
 
     if (!options.fn) {
         data.error = i18n.t('warnings.helpers.get.mustBeCalledAsBlock');
-        errors.logWarn(data.error);
+        logging.warn(data.error);
         return Promise.resolve();
     }
 
-    if (!_.contains(resources, context)) {
+    if (!_.includes(resources, resource)) {
         data.error = i18n.t('warnings.helpers.get.invalidResource');
-        errors.logWarn(data.error);
+        logging.warn(data.error);
         return Promise.resolve(options.inverse(self, {data: data}));
     }
 
     // Determine if this is a read or browse
-    apiMethod = isBrowse(context, apiOptions) ? api[context].browse : api[context].read;
+    apiMethod = isBrowse(resource, apiOptions) ? api[resource].browse : api[resource].read;
     // Parse the options we're going to pass to the API
     apiOptions = parseOptions(this, apiOptions);
 
@@ -120,13 +121,13 @@ get = function get(context, options) {
         var blockParams;
 
         // If no result is found, call the inverse or `{{else}}` function
-        if (_.isEmpty(result[context])) {
+        if (_.isEmpty(result[resource])) {
             return options.inverse(self, {data: data});
         }
 
         // block params allows the theme developer to name the data using something like
         // `{{#get "posts" as |result pageInfo|}}`
-        blockParams = [result[context]];
+        blockParams = [result[resource]];
         if (result.meta && result.meta.pagination) {
             result.pagination = result.meta.pagination;
             blockParams.push(result.meta.pagination);
@@ -143,21 +144,23 @@ get = function get(context, options) {
     });
 };
 
-module.exports = function getWithLabs(context, options) {
-    var self = this,
-        errorMessages = [
-            i18n.t('warnings.helpers.get.helperNotAvailable'),
-            i18n.t('warnings.helpers.get.apiMustBeEnabled'),
-            i18n.t('warnings.helpers.get.seeLink', {url: 'http://support.ghost.org/public-api-beta'})
-        ];
+module.exports = function getWithLabs(resource, options) {
+    var self = this, err;
 
     if (labs.isSet('publicAPI') === true) {
         // get helper is  active
-        return get.call(self, context, options);
+        return get.call(self, resource, options);
     } else {
-        errors.logError.apply(this, errorMessages);
+        err = new errors.GhostError({
+            message: i18n.t('warnings.helpers.get.helperNotAvailable'),
+            context: i18n.t('warnings.helpers.get.apiMustBeEnabled'),
+            help: i18n.t('warnings.helpers.get.seeLink', {url: 'http://support.ghost.org/public-api-beta'})
+        });
+
+        logging.error(err);
+
         return Promise.resolve(function noGetHelper() {
-            return '<script>console.error("' + errorMessages.join(' ') + '");</script>';
+            return '<script>console.error(' + JSON.stringify(err) + ');</script>';
         });
     }
 };

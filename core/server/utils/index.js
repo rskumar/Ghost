@@ -1,6 +1,5 @@
 var unidecode  = require('unidecode'),
     _          = require('lodash'),
-
     utils,
     getRandomInt;
 
@@ -94,7 +93,21 @@ utils = {
             base64String += '=';
         }
         return base64String;
-    }
+    },
+    redirect301: function redirect301(res, path) {
+        /*jslint unparam:true*/
+        res.set({'Cache-Control': 'public, max-age=' + utils.ONE_YEAR_S});
+        res.redirect(301, path);
+    },
+
+    readCSV: require('./read-csv'),
+    removeOpenRedirectFromUrl: require('./remove-open-redirect-from-url'),
+    zipFolder: require('./zip-folder'),
+    readThemes: require('./read-themes'),
+    generateAssetHash: require('./asset-hash'),
+    url: require('./url'),
+    tokens: require('./tokens'),
+    sequence: require('./sequence')
 };
 
 module.exports = utils;

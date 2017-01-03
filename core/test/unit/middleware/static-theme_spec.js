@@ -1,12 +1,8 @@
-/*globals describe, it, beforeEach */
-/*jshint expr:true*/
 var sinon        = require('sinon'),
     should       = require('should'),
 
     express      = require('express'),
     staticTheme  = require('../../../server/middleware/static-theme');
-
-should.equal(true, true);
 
 describe('staticTheme', function () {
     var next;
@@ -17,7 +13,7 @@ describe('staticTheme', function () {
 
     it('should call next if hbs file type', function () {
         var req = {
-            url: 'mytemplate.hbs'
+            path: 'mytemplate.hbs'
         };
 
         staticTheme(null)(req, null, next);
@@ -26,7 +22,7 @@ describe('staticTheme', function () {
 
     it('should call next if md file type', function () {
         var req = {
-            url: 'README.md'
+            path: 'README.md'
         };
 
         staticTheme(null)(req, null, next);
@@ -35,7 +31,7 @@ describe('staticTheme', function () {
 
     it('should call next if json file type', function () {
         var req = {
-            url: 'sample.json'
+            path: 'sample.json'
         };
 
         staticTheme(null)(req, null, next);
@@ -44,7 +40,7 @@ describe('staticTheme', function () {
 
     it('should call express.static if valid file type', function (done) {
         var req = {
-                url: 'myvalidfile.css',
+                path: 'myvalidfile.css',
                 app: {
                     get: function () { return 'casper'; }
                 }
@@ -68,7 +64,7 @@ describe('staticTheme', function () {
 
     it('should not error if active theme is missing', function (done) {
         var req = {
-                url: 'myvalidfile.css',
+                path: 'myvalidfile.css',
                 app: {
                     get: function () { return undefined; }
                 }
@@ -82,6 +78,27 @@ describe('staticTheme', function () {
             /*jshint unused:false */
             sandbox.restore();
             next.called.should.be.false();
+            done();
+        });
+    });
+
+    it('should not call next if file is on whitelist', function (done) {
+        var req = {
+                path: 'manifest.json',
+                app: {
+                    get: function () { return 'casper'; }
+                }
+            },
+            activeThemeStub,
+            sandbox = sinon.sandbox.create();
+
+        activeThemeStub = sandbox.spy(req.app, 'get');
+
+        staticTheme(null)(req, null, function (reqArg, res, next2) {
+            /*jshint unused:false */
+            sandbox.restore();
+            next.called.should.be.false();
+            activeThemeStub.called.should.be.true();
             done();
         });
     });

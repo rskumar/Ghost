@@ -2,12 +2,11 @@
 // `{{navigation}}`
 // Outputs navigation menu of static urls
 
-var _               = require('lodash'),
-    hbs             = require('express-hbs'),
-    i18n            = require('../i18n'),
-
-    errors          = require('../errors'),
-    template        = require('./template'),
+var _ = require('lodash'),
+    hbs = require('express-hbs'),
+    i18n = require('../i18n'),
+    errors = require('../errors'),
+    template = require('./template'),
     navigation;
 
 navigation = function (options) {
@@ -16,16 +15,20 @@ navigation = function (options) {
         currentUrl = options.data.root.relativeUrl,
         self = this,
         output,
-        context;
+        data;
 
     if (!_.isObject(navigationData) || _.isFunction(navigationData)) {
-        return errors.logAndThrowError(i18n.t('warnings.helpers.navigation.invalidData'));
+        throw new errors.IncorrectUsageError({
+            message: i18n.t('warnings.helpers.navigation.invalidData')
+        });
     }
 
     if (navigationData.filter(function (e) {
         return (_.isUndefined(e.label) || _.isUndefined(e.url));
     }).length > 0) {
-        return errors.logAndThrowError(i18n.t('warnings.helpers.navigation.valuesMustBeDefined'));
+        throw new errors.IncorrectUsageError({
+            message: i18n.t('warnings.helpers.navigation.valuesMustBeDefined')
+        });
     }
 
     // check for non-null string values
@@ -33,7 +36,9 @@ navigation = function (options) {
         return ((!_.isNull(e.label) && !_.isString(e.label)) ||
             (!_.isNull(e.url) && !_.isString(e.url)));
     }).length > 0) {
-        return errors.logAndThrowError(i18n.t('warnings.helpers.navigation.valuesMustBeString'));
+        throw new errors.IncorrectUsageError({
+            message: i18n.t('warnings.helpers.navigation.valuesMustBeString')
+        });
     }
 
     function _slugify(label) {
@@ -42,6 +47,10 @@ navigation = function (options) {
 
     // strips trailing slashes and compares urls
     function _isCurrentUrl(href, currentUrl) {
+        if (!currentUrl) {
+            return false;
+        }
+
         var strippedHref = href.replace(/\/+$/, ''),
             strippedCurrentUrl = currentUrl.replace(/\/+$/, '');
         return strippedHref === strippedCurrentUrl;
@@ -62,9 +71,9 @@ navigation = function (options) {
         return out;
     });
 
-    context = _.merge({}, {navigation: output});
+    data = _.merge({}, {navigation: output});
 
-    return template.execute('navigation', context, options);
+    return template.execute('navigation', data, options);
 };
 
 module.exports = navigation;
